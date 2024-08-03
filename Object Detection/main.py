@@ -31,7 +31,6 @@ nnfs.init()
 
 # print(layer2_outputs)
 
-# page 31
 # can be as many neurons in the layer as you want (5 in this case)
 # n_inputs in next layer has to be n_neurons of layer before
 class Layer_Dense:
@@ -44,22 +43,24 @@ class Layer_Dense:
         # (inputs * weights) + bias
         self.output = np.dot(inputs, self.weights) + self.biases
 
+'''
+* Activation Functions
+- helps solve problems that involve non-linear equations
 
-# Activation Functions
-# helps solve problems that involve non-linear equations
+* step activation function - in a single neuron, if, weights*inputs + bias, is
+  greater than zero, neuron fires a 1. Otherwise, fire 0.
 
-# step activation function - in a single neuron, if, weights*inputs + bias, is
-# greater than zero, neuron fires a 1. Otherwise, fire 0.
+* linear activation function - usually applied to last layers output in the case
+  of a regression model.
 
-# linear activation function - usually applied to last layers output in the case
-# of a regression model.
+* sigmoid activation function - Good for when it comes time to optimize weights and
+  biases. y = 1 / (1+e^-x). Returns 0 for -inf. 0.5 for zero. 1 for +inf.
 
-# sigmoid activation function - Good for when it comes time to optimize weights and
-# biases. y = 1 / (1+e^-x). Returns 0 for -inf. 0.5 for zero. 1 for +inf.
+* Rectified Linear Units activation function (ReLU) - easier to calc than sigmoid.
+  y = { x when x>0
+      { 0 when x<=0
+'''
 
-# Rectified Linear Units activation function (ReLU) - easier to calc than sigmoid.
-# y = { x when x>0
-#     { 0 when x<=0
 
 class Activation_ReLU:
     def forward(self, inputs):
@@ -72,6 +73,49 @@ class Activation_Softmax:
         exp_values = np.exp(outputBatches - np.max(outputBatches, axis=1, keepdims=True))
         probabilities = exp_values / np.sum(exp_values, axis=1, keepdims=True)
         self.output = probabilities
+
+'''
+* Softmax Loss (categorical cross entropy)
+- Used for multiclass classification. Outputs probability over N classes for each image
+* Raw Outputs -> Softmax activation = vector of predicted probabilities over input classes
+* one hot encoding - converting information ito a format that may be fed into an ML Alg to improve prediction.
+
+ex: 
+raw_output = [0.7, 0.1, 0.2]
+target_class = 0 (basically tells where you are in the one-hot encoding and what raw_output your looking at)
+one_hot = [1, 0, 0]
+
+L = -(math.log(raw_output[0])*one_hot[0] + 
+      math.log(raw_output[1])*one_hot[1] + 
+      math.log(raw_output[2])*one_hot[2])
+  = 0.35667494393873245
+  
+L simplifies to "-math.log(raw_output[0])" because everything else zero's out
+closer to zero = higher confidence
+'''
+
+class Loss:
+    def calculate(self, output, y):
+        sample_losses = self.forward(output, y)
+        data_loss = np.mean(sample_losses)
+        return data_loss
+
+class Loss_CategoricalCrossEntropy(Loss):
+    def forward(selfself, y_pred, y_true):
+        samples = len(y_pred)
+
+        # "1e-7" is used to be min value SUPER close to zero because
+        # negative infinity problem
+        y_pred_clipped = np.clip(y_pred, 1e-7, 1 - 1e-7)
+
+        if len(y_true.shape) == 1:
+            # grabs certain values from samples that we want to compare
+            correct_confidences = y_pred_clipped[range(samples), y_true]
+        # if target is given in 2d array (one-hot-encoded)
+        elif len(y_true.shape) == 2:
+            correct_confidences = np.sum(y_pred_clipped * y_true, axis=1)
+        negative_log_likelihoods = -np.log(correct_confidences)
+        return negative_log_likelihoods
 
 X, y = spiral_data(samples=100, classes=3)
 
@@ -91,3 +135,8 @@ dense2.forward(activation1.output)
 activation2.forward(dense2.output)
 
 print(activation2.output[:5])
+
+loss_function = Loss_CategoricalCrossEntropy()
+# takes in raw output and target
+loss = loss_function.calculate(activation2.output, y)
+print("Loss:", loss)
