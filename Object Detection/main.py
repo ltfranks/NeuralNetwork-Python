@@ -1,5 +1,6 @@
 import pandas as pd
 import numpy as np
+import matplotlib.pyplot as plt
 import nnfs
 from nnfs.datasets import spiral_data
 
@@ -41,7 +42,14 @@ class Layer_Dense:
     def forward(self, inputs):
         # ReLU
         # (inputs * weights) + bias
+        self.inputs = inputs
         self.output = np.dot(inputs, self.weights) + self.biases
+
+    # backward propagation
+    def backward(self, dvalues):
+        self.dweights = np.dot(self.inputs.T, dvalues)
+        self.dbiases = np.sum(dvalues, axis=0, keepdims=True)
+        self.dinputs = np.dot(dvalues, self.weights.T)
 
 '''
 * Activation Functions
@@ -64,7 +72,12 @@ class Layer_Dense:
 
 class Activation_ReLU:
     def forward(self, inputs):
+        self.inputs = inputs
         self.output = np.maximum(0, inputs)
+
+    def backward(self, dvalues):
+        self.dinputs = dvalues.copy()
+        self.dinputs[self.inputs <= 0] = 0
 
 class Activation_Softmax:
     def forward(self, outputBatches):
@@ -73,6 +86,9 @@ class Activation_Softmax:
         exp_values = np.exp(outputBatches - np.max(outputBatches, axis=1, keepdims=True))
         probabilities = exp_values / np.sum(exp_values, axis=1, keepdims=True)
         self.output = probabilities
+
+    def backward(self, dvalues):
+        self.dinputs = dvalues.copy()
 
 '''
 * Softmax Loss (categorical cross entropy)
@@ -117,26 +133,66 @@ class Loss_CategoricalCrossEntropy(Loss):
         negative_log_likelihoods = -np.log(correct_confidences)
         return negative_log_likelihoods
 
+    def backward(self, dvalues, y_true):
+        # num samples
+        samples = len(dvalues)
+        # num labels in every sample
+        labels = len(dvalues[0])
+        if len(y_true.shape) == 1:
+            y_true = np.eye(labels)[y_true]
+
+        dvalues_clipped = np.clip(dvalues, 1e-7, 1 - 1e-7)
+
+        # calc gradient of loss function to predictions
+        self.dinputs = -y_true / dvalues_clipped
+        # normalize by num of samples
+        self.dinputs = self.dinputs / samples
+
+class Optimizer_SGD:
+    def __init__(self, learning_rate=1.0):
+        self.learning_rate = learning_rate
+
+    def update_parameters(self, layer):
+        # updates weights/biases layers by subtracting learning rate * gradients
+        layer.weights -= self.learning_rate * layer.dweights
+        layer.biases -= self.learning_rate * layer.dbiases
+
 X, y = spiral_data(samples=100, classes=3)
 
 dense1 = Layer_Dense(2, 3)
 activation1 = Activation_ReLU()
 dense2 = Layer_Dense(3, 3)
 activation2 = Activation_Softmax()
-
-# forwards the data through each layer of the network
-# forwards raw data to first layer
-dense1.forward(X)
-# activation function on first layer
-activation1.forward(dense1.output)
-# forwards batches of output to 2nd layer
-dense2.forward(activation1.output)
-# softmax function on 2nd layer (output batches)
-activation2.forward(dense2.output)
-
-print(activation2.output[:5])
-
 loss_function = Loss_CategoricalCrossEntropy()
-# takes in raw output and target
-loss = loss_function.calculate(activation2.output, y)
-print("Loss:", loss)
+optimizer = Optimizer_SGD()
+
+for data in range(10001):
+    # forwards the data through each layer of the network
+    # forwards raw data to first layer
+    dense1.forward(X)
+    # activation function on first layer
+    activation1.forward(dense1.output)
+    # forwards batches of output to 2nd layer
+    dense2.forward(activation1.output)
+    # softmax function on 2nd layer (output batches)
+    activation2.forward(dense2.output)
+    # takes in raw output and target
+    loss = loss_function.calculate(activation2.output, y)
+
+    predictions = np.argmax(activation2.output, axis=1)
+    accuracy = np.mean(predictions == y)
+
+    # print loss and accuracy at intervals of a 1000
+    if data % 1000 == 0:
+        print(f'data: {data}, loss: {loss:.3f}, accuracy: {accuracy:.3f}')
+
+    # Backward pass through loss and layers
+    loss_function.backward(activation2.output, y)
+    activation2.backward(loss_function.dinputs)
+    dense2.backward(activation2.dinputs)
+    activation1.backward(dense2.dinputs)
+    dense1.backward(activation1.dinputs)
+
+    optimizer.update_parameters(dense1)
+    optimizer.update_parameters(dense2)
+
