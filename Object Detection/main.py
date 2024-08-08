@@ -79,6 +79,8 @@ class Activation_ReLU:
         self.dinputs = dvalues.copy()
         self.dinputs[self.inputs <= 0] = 0
 
+# converts raw output scores into probabilities by taking the exponential of each output
+# and then normalizing each value by dividing the sum of all exponentials
 class Activation_Softmax:
     def forward(self, outputBatches):
         # subtracting max prevents overflow
@@ -148,6 +150,7 @@ class Loss_CategoricalCrossEntropy(Loss):
         # normalize by num of samples
         self.dinputs = self.dinputs / samples
 
+# Stochastic gradient decent optimizer
 class Optimizer_SGD:
     def __init__(self, learning_rate=1.0):
         self.learning_rate = learning_rate
